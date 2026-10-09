@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Box, Button, Flex, Grid, Heading, Image, Input, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Grid, Heading, Image, Input, Text, chakra } from "@chakra-ui/react";
 import { useDisplay } from "@/hooks/use-display";
 import { useKiosk } from "@/hooks/use-kiosk";
 import { cacheIsFresh, formatMoney, imageUrl, menuRows, promotionIsActive } from "@/lib/model";
@@ -33,7 +33,7 @@ export function DisplayPlayer({ screenId }: { screenId: number }) {
       <Box as="form" onSubmit={async event => { event.preventDefault(); setPairing(true); setPairError("");
         try { await pair(code); setCode(""); } catch (error) { setPairError(error instanceof Error ? error.message : "Pairing failed."); } finally { setPairing(false); }
       }}>
-        <Text as="label" htmlFor="pair-code" display="block" mb="2">Six-digit pairing code</Text>
+        <chakra.label htmlFor="pair-code" display="block" mb="2">Six-digit pairing code</chakra.label>
         <Input id="pair-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" required maxLength={6} value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ""))} bg="whiteAlpha.100" fontSize="2xl" h="14" letterSpacing="0.3em" />
         <Button type="submit" mt="4" w="full" bg="accent" color="ink" loading={pairing}>Connect screen</Button>
         {pairError && <Text role="alert" mt="4" color="orange.200">{pairError}</Text>}

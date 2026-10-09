@@ -70,6 +70,7 @@ export class SignageRepository {
     return row ? { bytes: String(row.bytes), width: Number(row.width), height: Number(row.height) } : null;
   }
   async storeImage(id: string, bytes: Buffer, width: number, height: number) {
-    await this.query("INSERT INTO signage_images(id, content, width, height) VALUES ($1, $2::bytea, $3, $4)", [id, `\\x${bytes.toString("hex")}`, width, height]);
+    // Bind text and decode inside PostgreSQL to avoid driver-specific bytea serialisation.
+    await this.query("INSERT INTO signage_images(id, content, width, height) VALUES ($1, decode($2, 'hex'), $3, $4)", [id, bytes.toString("hex"), width, height]);
   }
 }
