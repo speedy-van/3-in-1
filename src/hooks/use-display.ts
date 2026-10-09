@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_OFFLINE_MS, POLL_MS, snapshotSchema, type DisplayCache } from "@/lib/model";
 export type Connection = "loading" | "live" | "reconnecting" | "pairing";
 export function useDisplay(screenId: number) {
@@ -8,11 +8,14 @@ export function useDisplay(screenId: number) {
   const [message, setMessage] = useState("");
   const [generation, setGeneration] = useState(0);
   const [now, setNow] = useState(0);
+  const pairingRequest = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
   const refresh = useCallback(() => setGeneration(value => value + 1), []);
   useEffect(() => {
+    mounted.current = true;
     const id = setInterval(() => setNow(Date.now()), 1000);
     setNow(Date.now());
-    return () => clearInterval(id);
+    return () => { mounted.current = false; clearInterval(id); pairingRequest.current?.abort(); };
   }, []);
   useEffect(() => {
     const key = `display-cache-v1-${screenId}`;
@@ -81,17 +84,29 @@ export function useDisplay(screenId: number) {
       }).catch(() => { /* Normal online display still works. */ });
     }
     return () => {
-      disposed = true; clearTimeout(timer); controller?.abort();
+      disposed = true; clearTimeout(timer); controller?.abort(); pairingRequest.current?.abort();
       window.removeEventListener("online", online); document.removeEventListener("visibilitychange", visible);
     };
   }, [screenId, generation]);
   const pair = useCallback(async (code: string) => {
-    const response = await fetch(`/api/signage/displays/${screenId}/pair`, {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? "Pairing failed. Please try again.");
-    refresh();
+    pairingRequest.current?.abort();
+    const controller = new AbortController(); pairingRequest.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetch(`/api/signage/displays/${screenId}/pair`, {
+        method: "POST", credentials: "same-origin", signal: controller.signal,
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Pairing failed. Please try again.");
+      if (mounted.current && !controller.signal.aborted) refresh();
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error("Pairing timed out or was cancelled. Check the connection and try again.");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      if (pairingRequest.current === controller) pairingRequest.current = null;
+    }
   }, [screenId, refresh]);
   return { cache, connection, message, now, refresh, pair };
 }

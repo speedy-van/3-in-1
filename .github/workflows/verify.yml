@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install and lock verified registry packages
+        id: install
         run: |
           if [ -f package-lock.json ]; then
             npm ci --no-audit --no-fund
@@ -30,13 +31,21 @@ jobs:
           fi
           npm ls --depth=0
       - run: npm run lint
+        if: always() && steps.install.outcome == 'success'
       - run: npm run typecheck
+        if: always() && steps.install.outcome == 'success'
       - run: npm test
+        if: always() && steps.install.outcome == 'success'
       - run: npm run build
+        id: build
+        if: always() && steps.install.outcome == 'success'
       - run: npx playwright install --with-deps chromium
+        id: browsers
+        if: always() && steps.build.outcome == 'success'
       - run: npm run test:e2e
+        if: always() && steps.browsers.outcome == 'success'
       - name: Commit initial tested dependency lock on the implementation branch
-        if: github.event_name == 'push' && github.ref_name == 'feat/six-screen-signage'
+        if: success() && github.event_name == 'push' && github.ref_name == 'feat/six-screen-signage'
         run: |
           if ! git diff --quiet -- package.json || [ -n "$(git ls-files --others --exclude-standard package-lock.json)" ]; then
             git config user.name 'github-actions[bot]'

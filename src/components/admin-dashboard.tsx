@@ -53,6 +53,7 @@ export function AdminDashboard() {
   const [newCategory, setNewCategory] = useState("");
   const [codes, setCodes] = useState<Record<number, { value: string; expiresAt: number }>>({});
   const [now, setNow] = useState(0);
+  const form = useRef<HTMLFormElement>(null);
   const report = useCallback((failure: unknown) => {
     if (failure instanceof DOMException && failure.name === "AbortError") { setError("The request timed out or was cancelled. Your unsaved changes are still here."); return; }
     setError(failure instanceof Error ? failure.message : "Something went wrong. Please try again.");
@@ -93,6 +94,7 @@ export function AdminDashboard() {
   };
   const screenChange = (id: number, patch: Partial<Screen>) => change(doc => ({ ...doc, screens: doc.screens.map(screen => screen.id === id ? { ...screen, ...patch } : screen) }));
   const itemChange = (id: string, patch: Partial<MenuItem>) => change(doc => ({ ...doc, items: doc.items.map(item => item.id === id ? { ...item, ...patch } : item) }));
+  const switchTab = (next: "screens" | "menu") => { if (!form.current || form.current.reportValidity()) setTab(next); };
   async function upload(file: File | undefined, apply: (id: string) => void) {
     if (!file) return; setError("");
     if (file.size > 3 * 1024 * 1024 || !["image/png", "image/jpeg", "image/webp"].includes(file.type)) { setError("Use JPG, PNG or WebP, up to 3 MB."); return; }
@@ -132,10 +134,10 @@ export function AdminDashboard() {
         try { await api("logout", post); setAuth("out"); } catch (failure) { report(failure); }
       }}>Sign out</Button></Flex></Flex>
     <Flex bg="ink" color="paper" p="5" borderRadius="xl" justify="space-between" gap="4" wrap="wrap" mb="5"><Box><Text fontWeight="bold">One menu. Six displays.</Text><Text fontSize="sm">{doc.items.length} items · {doc.items.filter(item => item.status === "draft").length} drafts · Saved version {saved.revision}</Text></Box><Text fontSize="sm">Changes appear after you save. Imported prices need approval.</Text></Flex>
-    <Flex gap="2" mb="5"><Button variant={tab === "screens" ? "solid" : "outline"} onClick={() => setTab("screens")}>Screens</Button><Button variant={tab === "menu" ? "solid" : "outline"} onClick={() => setTab("menu")}>Menu & prices</Button></Flex>
+    <Flex gap="2" mb="5"><Button variant={tab === "screens" ? "solid" : "outline"} onClick={() => switchTab("screens")}>Screens</Button><Button variant={tab === "menu" ? "solid" : "outline"} onClick={() => switchTab("menu")}>Menu & prices</Button></Flex>
     {error && <Box role="alert" bg="red.50" color="red.800" p="4" mb="4" borderRadius="lg">{error}</Box>}
     {message && <Box role="status" bg="green.50" color="green.800" p="4" mb="4" borderRadius="lg">{message}</Box>}
-    <Box as="form" onSubmit={event => { event.preventDefault(); void save(); }}>
+    <chakra.form ref={form} onSubmit={event => { event.preventDefault(); void save(); }}>
       <Flex position="sticky" top="0" zIndex="5" bg="paper" py="3" gap="3" align="center" mb="4" wrap="wrap" borderBottom="1px solid" borderColor="gray.200">
         <Button type="submit" bg="ink" color="paper" loading={busy} disabled={!dirty || uploads > 0}>Save changes</Button>
         <Button type="button" variant="outline" disabled={busy || uploads > 0} onClick={async () => {
@@ -216,7 +218,7 @@ export function AdminDashboard() {
         </Grid>
       </>}
       </chakra.fieldset>
-    </Box>
-    <Box borderTop="1px solid" borderColor="gray.200" mt="8" pt="5"><Text fontSize="sm" color="muted">Pair each TV at /display/1 to /display/6. Keep-awake and full screen depend on the TV browser. Disable sleep, eco timers and screen savers in each television's own settings. Images uploaded here are public menu assets.</Text></Box>
+    </chakra.form>
+    <Box borderTop="1px solid" borderColor="gray.200" mt="8" pt="5"><Text fontSize="sm" color="muted">Pair each TV at /display/1 to /display/6. Keep-awake and full screen depend on the TV browser. Disable sleep, eco timers and screen savers in the settings of each television. Images uploaded here are public menu assets.</Text></Box>
   </Box>;
 }

@@ -34,20 +34,22 @@ export function useKiosk() {
       document.removeEventListener("visibilitychange", visible);
       void sentinel.current?.release(); sentinel.current = null;
     };
-    // The listener reads mutable handles rather than captured render state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   async function start() {
     wanted.current = true; setStarted(true); setFullscreenError("");
-    const request = document.documentElement.requestFullscreen?.();
     void acquire();
-    if (!request) { setFullscreenError("Use the TV browser's full-screen setting if available."); return; }
-    try { await request; } catch { if (alive.current) setFullscreenError("Full screen was not granted. The menu can still be displayed."); }
+    if (!document.documentElement.requestFullscreen) {
+      setFullscreenError("Use the TV browser's full-screen setting if available."); return;
+    }
+    try { await document.documentElement.requestFullscreen(); }
+    catch { if (alive.current) setFullscreenError("Full screen was not granted. The menu can still be displayed."); }
   }
   async function stop() {
-    wanted.current = false; await sentinel.current?.release(); sentinel.current = null;
-    if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
-    setStarted(false); setWakeStatus("Not requested");
+    wanted.current = false;
+    if (sentinel.current) await sentinel.current.release().catch(() => undefined);
+    sentinel.current = null;
+    if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen().catch(() => undefined);
+    if (alive.current) { setStarted(false); setWakeStatus("Not requested"); }
   }
   return { started, wakeStatus, fullscreenError, start, stop };
 }
