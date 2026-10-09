@@ -1,5 +1,5 @@
 import { z } from "zod";
-import raw from "../../data/menu-draft.json";
+import raw from "../../data/menu-draft.json" with { type: "json" };
 import { documentSchema, initialDocument } from "./model";
 const seedSchema = z.array(z.tuple([z.string(), z.array(z.tuple([z.string(), z.array(z.tuple([z.string(), z.number().int()]))]))]));
 /** Owner-supplied research dated 2026-10-09. This is not an approved live menu. */
