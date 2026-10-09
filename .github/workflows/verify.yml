@@ -1,0 +1,63 @@
+name: Verify application
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and lock verified registry packages
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+            node scripts/pin-dependencies.mjs
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          fi
+          npm ls --depth=0
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Commit initial tested dependency lock on the implementation branch
+        if: github.event_name == 'push' && github.ref_name == 'feat/six-screen-signage'
+        run: |
+          if ! git diff --quiet -- package.json || [ -n "$(git ls-files --others --exclude-standard package-lock.json)" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package.json package-lock.json
+            git commit -m 'chore: pin dependencies verified by CI'
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+      - name: Bundle source for handover
+        if: always()
+        run: |
+          git archive --format=zip HEAD -o source.zip
+          if [ -f package-lock.json ]; then zip -q source.zip package.json package-lock.json; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification
+          path: |
+            source.zip
+            package.json
+            package-lock.json
+            test-results/
+            playwright-report/
+          retention-days: 7
