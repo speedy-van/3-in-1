@@ -30,9 +30,12 @@ export function useDisplay(screenId: number) {
         if (snapshot.screen.id === screenId) current = { snapshot, validatedAt: raw.validatedAt };
       }
     } catch { /* Corrupt or unavailable storage must not prevent a fresh connection. */ }
-    setCache(current); setConnection("loading");
+    setCache(current); setNow(Date.now()); setConnection("loading");
     const save = (value: DisplayCache | null) => {
       current = value; setCache(value);
+      // Keep the render clock in the same batch as a new confirmation timestamp.
+      // Otherwise a fresh response could look future-dated until the next clock tick.
+      setNow(Date.now());
       try { if (value) localStorage.setItem(key, JSON.stringify(value)); else localStorage.removeItem(key); } catch { /* Private browsing can disable storage. */ }
     };
     const schedule = (delay: number) => {

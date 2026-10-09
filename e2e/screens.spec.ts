@@ -4,6 +4,12 @@ import { makeSnapshot, MAX_OFFLINE_MS, type SavedDocument } from "../src/lib/mod
 async function noHorizontalOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 }
+/** Network-state tests use one page; timed pagination has its own test below. */
+function singlePageFixture() {
+  const saved = fixture();
+  saved.document.screens[0].itemsPerPage = 12;
+  return saved;
+}
 test("administrator login works at 360px without overflow", async ({ page }, info) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/admin/screens"); await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
@@ -56,7 +62,7 @@ test("a version conflict keeps the unsaved edit and explains recovery", async ({
     : route.fulfill({ json: { ...fixture(), devices: [] } }));
   await page.goto("/admin/screens"); await page.getByLabel("Screen 1 heading", { exact: true }).fill("Keep my unsaved heading");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Another administrator");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("Another administrator");
   await expect(page.getByLabel("Screen 1 heading", { exact: true })).toHaveValue("Keep my unsaved heading");
 });
 test("mirroring all screens keeps their own enable switches", async ({ page }) => {
@@ -82,26 +88,42 @@ test("a connected display receives changed prices without a reload", async ({ pa
   await expect(page.getByText("£9.25", { exact: true })).toBeVisible();
 });
 test("304 responses confirm the cached version without emptying the display", async ({ page }) => {
-  await page.clock.install(); let requests = 0;
+  await page.clock.install(); let requests = 0; const saved = singlePageFixture();
   await page.route("**/api/signage/displays/1*", route => {
     requests++;
-    return requests === 1 ? route.fulfill({ json: makeSnapshot(fixture(), 1) }) : route.fulfill({ status: 304, body: "" });
+    return requests === 1 ? route.fulfill({ json: makeSnapshot(saved, 1) }) : route.fulfill({ status: 304, body: "" });
   });
   await page.goto("/display/1"); await expect(page.getByText("£6.00", { exact: true })).toBeVisible();
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem("display-cache-v1-1")!).validatedAt);
   await page.clock.fastForward(11_000);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("display-cache-v1-1")!).validatedAt)).toBeGreaterThan(before);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("display-cache-v1-1")!).snapshot.revision)).toBe(1);
+  await expect(page.getByRole("heading", { name: "Screen 1 menu" })).toBeVisible();
   await expect(page.getByText("£6.00", { exact: true })).toBeVisible();
 });
 test("offline prices expire and the display recovers on reconnection", async ({ page }) => {
-  await page.clock.install(); let offline = false;
-  await page.route("**/api/signage/displays/1*", route => offline ? route.abort() : route.fulfill({ json: makeSnapshot(fixture(), 1) }));
+  await page.clock.install(); let offline = false; const saved = singlePageFixture();
+  await page.route("**/api/signage/displays/1*", route => offline ? route.abort() : route.fulfill({ json: makeSnapshot(saved, 1) }));
   await page.goto("/display/1"); await expect(page.getByText("£6.00", { exact: true })).toBeVisible();
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem("display-cache-v1-1")!).validatedAt);
   offline = true; await page.clock.fastForward(MAX_OFFLINE_MS + 2000);
   await expect(page.getByRole("heading", { name: "Menu temporarily unavailable" })).toBeVisible();
   await expect(page.getByText("£6.00", { exact: true })).toHaveCount(0);
   offline = false; await page.evaluate(() => window.dispatchEvent(new Event("online"))); await page.clock.fastForward(61_000);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("display-cache-v1-1")!).validatedAt)).toBeGreaterThan(before + MAX_OFFLINE_MS);
+  await expect(page.getByRole("heading", { name: "Menu temporarily unavailable" })).toHaveCount(0);
   await expect(page.getByText("£6.00", { exact: true })).toBeVisible();
+});
+test("pagination advances independently of unchanged menu responses", async ({ page }) => {
+  await page.clock.install(); const saved = fixture();
+  saved.document.screens[0].itemsPerPage = 2;
+  await page.route("**/api/signage/displays/1*", route => route.fulfill({ json: makeSnapshot(saved, 1) }));
+  await page.goto("/display/1");
+  await expect(page.getByText("Vegetable Pakora", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mixed Chicken & Vegetable Pakora", { exact: true })).toHaveCount(0);
+  await page.clock.fastForward(13_000);
+  await expect(page.getByText("Mixed Chicken & Vegetable Pakora", { exact: true })).toBeVisible();
+  await expect(page.getByText("Vegetable Pakora", { exact: true })).toHaveCount(0);
 });
 test("revocation clears the cached menu and requests a new code", async ({ page }) => {
   await page.clock.install(); let revoked = false;
@@ -126,7 +148,7 @@ test("pairing failure remains recoverable and never opens administration", async
   await page.route("**/api/signage/displays/1/pair", route => route.fulfill({ status: 401, json: { error: "That code has expired." } }));
   await page.goto("/display/1"); await page.getByLabel("Six-digit pairing code").fill("123456");
   await page.getByRole("button", { name: "Connect screen", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("expired");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("expired");
   await expect(page.getByRole("button", { name: "Connect screen", exact: true })).toBeEnabled();
 });
 test("real server routes reject unauthenticated and cross-origin writes", async ({ request }) => {

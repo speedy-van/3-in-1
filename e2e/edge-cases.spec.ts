@@ -25,7 +25,7 @@ test("pairing requests time out and the user can retry", async ({ page }) => {
   await page.goto("/display/1"); await page.getByLabel("Six-digit pairing code").fill("123456");
   await page.getByRole("button", { name: "Connect screen", exact: true }).click();
   await page.clock.fastForward(11_000);
-  await expect(page.getByRole("alert")).toContainText("timed out");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("timed out");
   await expect(page.getByRole("button", { name: "Connect screen", exact: true })).toBeEnabled();
 });
 
